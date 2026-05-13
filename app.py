@@ -35,17 +35,17 @@ def find_file(possible_paths):
 
 
 GEOJSON_PATH = find_file([
-    "data/guangdong_county.geojson",
+    "guangdong_county.geojson",
     "guangdong_county.geojson"
 ])
 
 RECORDS_PATH = find_file([
-    "data/dialect_records.csv",
+    "dialect_records.csv",
     "dialect_records.csv"
 ])
 
 COUNTS_PATH = find_file([
-    "data/feature_counts.csv",
+    "feature_counts.csv",
     "feature_counts.csv"
 ])
 
