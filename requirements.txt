@@ -1,5 +1,9 @@
 
 streamlit
-folium
 pandas
+folium
 streamlit-folium
+geopandas
+pyogrio
+shapely
+fiona
