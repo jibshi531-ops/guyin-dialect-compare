@@ -17,9 +17,9 @@ st.title("广东方言特征可视化平台")
 st.caption("选择某个语音特征后，地图只高亮出现该特征的县区。")
 
 
-GEOJSON_PATH = "data/guangdong_county.geojson"
-RECORDS_PATH = "data/dialect_records.csv"
-COUNTS_PATH = "data/feature_counts.csv"
+GEOJSON_PATH = "guangdong_county.geojson"
+RECORDS_PATH = "dialect_records.csv"
+COUNTS_PATH = "feature_counts.csv"
 
 
 @st.cache_data
