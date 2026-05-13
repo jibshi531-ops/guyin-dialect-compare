@@ -17,17 +17,10 @@ st.title("广东方言特征可视化平台")
 st.caption("选择某个语音特征后，地图只高亮出现该特征的县区。")
 
 
-# ======================
-# 数据路径
-# ======================
+GEOJSON_PATH = "data/guangdong_county.geojson"
+RECORDS_PATH = "data/dialect_records.csv"
+COUNTS_PATH = "data/feature_counts.csv"
 
-GEOJSON_PATH = "guangdong_county.geojson"
-CSV_PATH = "dialect_records.csv"
-
-
-# ======================
-# 读取数据
-# ======================
 
 @st.cache_data
 def load_geojson():
@@ -37,174 +30,95 @@ def load_geojson():
 
 @st.cache_data
 def load_records():
-    return pd.read_csv(CSV_PATH, encoding="utf-8-sig")
+    return pd.read_csv(RECORDS_PATH, encoding="utf-8-sig")
+
+
+@st.cache_data
+def load_counts():
+    return pd.read_csv(COUNTS_PATH, encoding="utf-8-sig")
 
 
 geojson_data = load_geojson()
 records = load_records()
+counts = load_counts()
 
 
-# ======================
-# 字段识别
-# ======================
+key_col = "市县匹配键"
 
-def find_col(columns, candidates):
-    for c in candidates:
-        if c in columns:
-            return c
-    return None
-
-
-key_col = find_col(
-    records.columns,
-    ["市县匹配键", "match_key", "匹配键"]
-)
-
-id_col = find_col(
-    records.columns,
-    ["編號", "编号", "ID", "id"]
-)
-
-city_col = find_col(
-    records.columns,
-    ["市_表格", "市_边界", "市", "市名"]
-)
-
-county_col = find_col(
-    records.columns,
-    ["县_表格", "县_边界", "县", "县名", "区县"]
-)
-
-if key_col is None:
-    st.error("CSV 中没有找到“市县匹配键”字段。")
+if key_col not in records.columns:
+    st.error("records 中没有“市县匹配键”字段。")
     st.stop()
 
-if id_col is None:
-    id_col = records.columns[0]
-
-
-feature_fields = [
-    "語音特徵大類",
-    "語音特徵小類及編碼",
-    "標準化語音特徵",
-    "方言類型判斷",
-    "區域傾向",
-    "現代方言區參照",
-    "古今關係",
-    "證據等級",
-    "语音特征大类",
-    "语音特征小类及编码",
-    "标准化语音特征",
-    "方言类型判断",
-    "区域倾向",
-    "现代方言区参照",
-    "古今关系",
-    "证据等级"
-]
-
-feature_fields = [c for c in feature_fields if c in records.columns]
-
-if len(feature_fields) == 0:
-    st.error("CSV 中没有找到可筛选的特征字段。")
+if key_col not in counts.columns:
+    st.error("feature_counts 中没有“市县匹配键”字段。")
     st.stop()
 
 
 # ======================
-# 侧边栏筛选
+# 筛选区：用 form，避免每点一下就重新跑
 # ======================
 
 st.sidebar.header("筛选条件")
 
-selected_field = st.sidebar.selectbox(
-    "选择特征字段",
-    feature_fields
-)
+feature_fields = sorted(counts["特征字段"].dropna().unique().tolist())
 
-values = (
-    records[selected_field]
-    .dropna()
-    .astype(str)
-    .str.strip()
-)
+with st.sidebar.form("filter_form"):
+    selected_field = st.selectbox(
+        "选择特征字段",
+        feature_fields
+    )
 
-values = values[
-    (values != "") &
-    (values.str.lower() != "nan") &
-    (values != "/")
-]
-
-feature_values = sorted(values.unique().tolist())
-
-selected_value = st.sidebar.selectbox(
-    "选择具体特征",
-    feature_values
-)
-
-match_mode = st.sidebar.radio(
-    "匹配方式",
-    ["精确匹配", "包含匹配"],
-    horizontal=True
-)
-
-if city_col is not None:
-    city_values = (
-        records[city_col]
+    values = (
+        counts[counts["特征字段"] == selected_field]["特征值"]
         .dropna()
         .astype(str)
-        .str.strip()
+        .sort_values()
+        .unique()
+        .tolist()
     )
-    city_values = sorted(city_values[city_values != ""].unique().tolist())
 
-    selected_city = st.sidebar.selectbox(
-        "选择市",
-        ["全部"] + city_values
+    selected_value = st.selectbox(
+        "选择具体特征",
+        values
     )
-else:
-    selected_city = "全部"
+
+    submit = st.form_submit_button("更新地图")
 
 
 # ======================
-# 执行筛选
+# 读取当前特征的县区数量
 # ======================
 
-valid_records = records[records[id_col].notna()].copy()
+current_counts = counts[
+    (counts["特征字段"] == selected_field) &
+    (counts["特征值"].astype(str) == str(selected_value))
+].copy()
 
-field_text = valid_records[selected_field].fillna("").astype(str).str.strip()
-
-if match_mode == "精确匹配":
-    filtered = valid_records[field_text == selected_value].copy()
-else:
-    filtered = valid_records[
-        field_text.str.contains(selected_value, regex=False, na=False)
-    ].copy()
-
-if city_col is not None and selected_city != "全部":
-    filtered = filtered[filtered[city_col].astype(str) == selected_city]
-
-
-# ======================
-# 按县统计数量
-# ======================
-
-count_df = (
-    filtered.groupby(key_col)
-    .size()
-    .reset_index(name="特征数量")
+count_dict = dict(
+    zip(current_counts[key_col], current_counts["特征数量"])
 )
 
-count_dict = dict(zip(count_df[key_col], count_df["特征数量"]))
+
+# ======================
+# 筛选明细表
+# ======================
+
+field_text = records[selected_field].fillna("").astype(str).str.strip()
+
+filtered = records[field_text == str(selected_value)].copy()
 
 
 # ======================
-# 给 GeoJSON 写入数量
+# 给 GeoJSON 添加数量
 # ======================
 
-for feature in geojson_data["features"]:
+# 注意：这里复制一份，避免缓存对象被反复修改
+map_geojson = json.loads(json.dumps(geojson_data, ensure_ascii=False))
+
+for feature in map_geojson["features"]:
     props = feature["properties"]
 
     key = props.get("市县匹配键", "")
-
-    # 如果 geojson 里的字段名不是市县匹配键，尝试 match_key
     if key == "":
         key = props.get("match_key", "")
 
@@ -221,7 +135,7 @@ with col1:
     st.metric("当前特征记录数", len(filtered))
 
 with col2:
-    st.metric("涉及县区数", len(count_df))
+    st.metric("涉及县区数", len(current_counts))
 
 with col3:
     st.metric("选择字段", selected_field)
@@ -267,23 +181,19 @@ def style_function(feature):
         return {
             "fillColor": "#eeeeee",
             "color": "#cccccc",
-            "weight": 0.4,
-            "fillOpacity": 0.25
+            "weight": 0.3,
+            "fillOpacity": 0.18
         }
 
-
-# ======================
-# 绘制地图
-# ======================
 
 m = folium.Map(
     location=[23.4, 113.4],
     zoom_start=7,
-    tiles="CartoDB positron"
+    tiles="CartoDB positron",
+    prefer_canvas=True
 )
 
-# 自动设置 tooltip 字段
-sample_props = geojson_data["features"][0]["properties"]
+sample_props = map_geojson["features"][0]["properties"]
 
 tooltip_fields = []
 tooltip_aliases = []
@@ -300,7 +210,7 @@ for f, a in [
         tooltip_aliases.append(a)
 
 folium.GeoJson(
-    geojson_data,
+    map_geojson,
     style_function=style_function,
     tooltip=folium.GeoJsonTooltip(
         fields=tooltip_fields,
@@ -376,13 +286,8 @@ if len(show_cols) == 0:
 st.dataframe(
     filtered[show_cols],
     use_container_width=True,
-    height=380
+    height=360
 )
-
-
-# ======================
-# 下载
-# ======================
 
 download_csv = filtered.to_csv(index=False, encoding="utf-8-sig")
 
